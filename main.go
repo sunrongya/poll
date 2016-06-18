@@ -18,7 +18,10 @@ func main() {
 
 	// 注册EventHandler/读模型Handler
 	eh := NewEventHandler(ps.CommandChannel(), vs.CommandChannel())
+	readRepository := ES.NewMemoryReadRepository()
+	pollProjector := NewPollProjector(readRepository)
 	eventbus.RegisterHandlers(eh)
+	eventbus.RegisterHandlers(pollProjector)
 
 	go eventbus.HandleEvents()
 	go ps.HandleCommands()
@@ -53,6 +56,14 @@ func main() {
 		fmt.Printf("%v\n------------------\n", vs.RestoreAggregate(vote3))
 		fmt.Printf("%v\n------------------\n", vs.RestoreAggregate(vote4))
 		fmt.Printf("%v\n------------------\n", vs.RestoreAggregate(vote5))
+
+		fmt.Printf("-----------------\nRead Model:\n\n")
+		if rPoll1, err := readRepository.Find(poll1); err == nil {
+			fmt.Printf("%v\n------------------\n", rPoll1)
+		}
+		if rPoll2, err := readRepository.Find(poll2); err == nil {
+			fmt.Printf("%v\n------------------\n", rPoll2)
+		}
 
 		wg.Done()
 	}()

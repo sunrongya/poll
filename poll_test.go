@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	//"fmt"
 	"github.com/stretchr/testify/assert"
 	es "github.com/sunrongya/eventsourcing"
 	"testing"
@@ -10,6 +10,7 @@ import (
 
 func TestPollRestore(t *testing.T) {
 	poll := &Poll{_userChoices: make(map[Voter][]Choice)}
+
 	pollCreatedEvent := &PollCreatedEvent{
 		Title:   "喜欢哪几种语言？",
 		Choices: []Choice{"PHP", "Java", "Golang", "Haskell", "Node.js"},
@@ -28,94 +29,63 @@ func TestPollRestore(t *testing.T) {
 			Time:    time.Now(),
 		},
 	}
-	poll.ApplyEvents([]es.Event{
-		pollCreatedEvent,
-		completedEvent,
-		failedEvent,
-	})
-	assert.Equal(t, 3, poll.Version(), "version error")
+	poll.HandlePollCreatedEvent(pollCreatedEvent)
+	poll.HandleVotePollCompletedBecauseOfVoteRecordEvent(completedEvent)
+	poll.HandleVotePollFailedBecauseOfVoteRecordEvent(failedEvent)
+
 	assert.Equal(t, pollCreatedEvent.Title, poll._title, "Title错误")
 	assert.Equal(t, pollCreatedEvent.Choices, poll._choices, "Choices错误")
 	assert.Equal(t, []Choice{"Java", "Golang"}, poll._userChoices["voter1"], "投票记录信息错误")
 }
 
-func TestPollRestoreForErrorEvent(t *testing.T) {
-	assert.Panics(t, func() {
-		NewPoll().ApplyEvents([]es.Event{&struct{ es.WithGuid }{}})
-	}, "restore error event must panic error")
+func TestCreatePollCommand(t *testing.T) {
+	title := "title1"
+	choices := []Choice{"PHP", "Java", "Golang", "Haskell", "Node.js"}
+	command := &CreatePollCommand{Title: title, Choices: choices}
+	events := []es.Event{&PollCreatedEvent{Title: title, Choices: choices}}
+
+	assert.Equal(t, events, new(Poll).ProcessCreatePollCommand(command), "创建调查题目返回的事件有误")
 }
 
-func TestCheckPollApplyEvents(t *testing.T) {
-	events := []es.Event{
-		&PollCreatedEvent{},
-		&VotePollCompletedBecauseOfVoteRecordEvent{},
-		&VotePollFailedBecauseOfVoteRecordEvent{},
-	}
-	assert.NotPanics(t, func() { NewPoll().ApplyEvents(events) }, "Check Process All Event")
-}
-
-func TestPollCommand(t *testing.T) {
-	guid := es.NewGuid()
+func VotePollBecauseOfVoteRecordCommand2Completed(t *testing.T) {
 	title := "title1"
 	choices := []Choice{"PHP", "Java", "Golang", "Haskell", "Node.js"}
 	voteDetails := VoteDetails{
 		VoteRecordId: es.NewGuid(),
-		PollId:       guid,
+		PollId:       es.NewGuid(),
 		Voter:        "adj",
 		Choices:      []Choice{"PHP", "Java", "Golang"},
 		Time:         time.Now(),
 	}
+	poll := &Poll{_title: title, _choices: choices}
+	command := &VotePollBecauseOfVoteRecordCommand{VoteDetails: voteDetails}
+	events := []es.Event{&VotePollCompletedBecauseOfVoteRecordEvent{VoteDetails: voteDetails}}
+
+	assert.Equal(t, events, poll.ProcessVotePollBecauseOfVoteRecordCommand(command), "调查题目返回投票成功事件有误")
+}
+
+func VotePollBecauseOfVoteRecordCommand2Failured(t *testing.T) {
+	title := "title1"
+	choices := []Choice{"PHP", "Java", "Golang", "Haskell", "Node.js"}
 	errorVoteDetails := VoteDetails{
 		VoteRecordId: es.NewGuid(),
-		PollId:       guid,
+		PollId:       es.NewGuid(),
 		Voter:        "adj",
 		Choices:      []Choice{"PHP", "Java", ".Net"},
 		Time:         time.Now(),
 	}
+	poll := &Poll{_title: title, _choices: choices}
+	command := &VotePollBecauseOfVoteRecordCommand{VoteDetails: errorVoteDetails}
+	events := []es.Event{&VotePollFailedBecauseOfVoteRecordEvent{VoteDetails: errorVoteDetails}}
 
-	tests := []struct {
-		poll    *Poll
-		command es.Command
-		event   es.Event
-	}{
-		{
-			&Poll{},
-			&CreatePollCommand{WithGuid: es.WithGuid{Guid: guid}, Title: title, Choices: choices},
-			&PollCreatedEvent{WithGuid: es.WithGuid{Guid: guid}, Title: title, Choices: choices},
-		},
-		{
-			&Poll{_title: title, _choices: choices},
-			&VotePollBecauseOfVoteRecordCommand{WithGuid: es.WithGuid{Guid: guid}, VoteDetails: voteDetails},
-			&VotePollCompletedBecauseOfVoteRecordEvent{WithGuid: es.WithGuid{Guid: guid}, VoteDetails: voteDetails},
-		},
-		{
-			&Poll{_title: title, _choices: choices},
-			&VotePollBecauseOfVoteRecordCommand{WithGuid: es.WithGuid{Guid: guid}, VoteDetails: errorVoteDetails},
-			&VotePollFailedBecauseOfVoteRecordEvent{WithGuid: es.WithGuid{Guid: guid}, VoteDetails: errorVoteDetails},
-		},
-	}
-
-	for _, v := range tests {
-		assert.Equal(t, []es.Event{v.event}, v.poll.ProcessCommand(v.command))
-	}
+	assert.Equal(t, events, poll.ProcessVotePollBecauseOfVoteRecordCommand(command), "调查题目返回投票失败事件有误")
 }
 
 func TestPollCommand_Panic(t *testing.T) {
-	tests := []struct {
-		poll    *Poll
-		command es.Command
-	}{
-		{
-			&Poll{},
-			&struct{ es.WithGuid }{},
+	assert.Panics(t,
+		func() {
+			new(Poll).ProcessVotePollBecauseOfVoteRecordCommand(&VotePollBecauseOfVoteRecordCommand{})
 		},
-		{
-			&Poll{},
-			&VotePollBecauseOfVoteRecordCommand{},
-		},
-	}
-
-	for _, v := range tests {
-		assert.Panics(t, func() { v.poll.ProcessCommand(v.command) }, fmt.Sprintf("test panics error: command:%v", v.command))
-	}
+		"调查题目内容为空，不能进行投票",
+	)
 }

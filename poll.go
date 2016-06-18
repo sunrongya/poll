@@ -14,51 +14,42 @@ type Poll struct {
 
 var _ es.Aggregate = (*Poll)(nil)
 
-func (p *Poll) ApplyEvents(events []es.Event) {
-	for _, event := range events {
-		switch e := event.(type) {
-		case *PollCreatedEvent:
-			p._title, p._choices = e.Title, e.Choices
-		case *VotePollCompletedBecauseOfVoteRecordEvent:
-			p._userChoices[e.Voter] = e.Choices
-		case *VotePollFailedBecauseOfVoteRecordEvent:
-		default:
-			panic(fmt.Errorf("Unknown event %#v", e))
-		}
+func NewPoll() es.Aggregate {
+	return &Poll{
+		_userChoices: make(map[Voter][]Choice),
 	}
-	p.SetVersion(len(events))
 }
 
-func (p *Poll) ProcessCommand(command es.Command) []es.Event {
-	var event es.Event
-	switch c := command.(type) {
-	case *CreatePollCommand:
-		event = p.processCreatePollCommand(c)
-	case *VotePollBecauseOfVoteRecordCommand:
-		event = p.processVotePollBecauseOfVoteRecordCommand(c)
-	default:
-		panic(fmt.Errorf("Unknown command %#v", c))
-	}
-	event.SetGuid(command.GetGuid())
-	return []es.Event{event}
+func (p *Poll) ProcessCreatePollCommand(command *CreatePollCommand) []es.Event {
+	return []es.Event{&PollCreatedEvent{Title: command.Title, Choices: command.Choices}}
 }
 
-func (p *Poll) processCreatePollCommand(command *CreatePollCommand) es.Event {
-	return &PollCreatedEvent{Title: command.Title, Choices: command.Choices}
-}
-
-func (p *Poll) processVotePollBecauseOfVoteRecordCommand(command *VotePollBecauseOfVoteRecordCommand) es.Event {
+func (p *Poll) ProcessVotePollBecauseOfVoteRecordCommand(command *VotePollBecauseOfVoteRecordCommand) []es.Event {
 	if p._title == "" || len(p._choices) == 0 {
 		panic(fmt.Errorf("poll aggegate error"))
 	}
 	if _, ok := p._userChoices[command.Voter]; ok || !p.isContains(command.Choices) {
-		return &VotePollFailedBecauseOfVoteRecordEvent{VoteDetails: command.VoteDetails}
+		return []es.Event{
+			&VotePollFailedBecauseOfVoteRecordEvent{VoteDetails: command.VoteDetails},
+		}
 
 	}
-	return &VotePollCompletedBecauseOfVoteRecordEvent{VoteDetails: command.VoteDetails}
+	return []es.Event{
+		&VotePollCompletedBecauseOfVoteRecordEvent{VoteDetails: command.VoteDetails},
+	}
 }
 
-// TODO 后面再来优化
+func (p *Poll) HandlePollCreatedEvent(event *PollCreatedEvent) {
+	p._title, p._choices = event.Title, event.Choices
+}
+
+func (p *Poll) HandleVotePollCompletedBecauseOfVoteRecordEvent(event *VotePollCompletedBecauseOfVoteRecordEvent) {
+	p._userChoices[event.Voter] = event.Choices
+}
+
+func (p *Poll) HandleVotePollFailedBecauseOfVoteRecordEvent(event *VotePollFailedBecauseOfVoteRecordEvent) {
+}
+
 func (p *Poll) isContains(choices []Choice) bool {
 	if len(choices) == 0 {
 		return false
@@ -76,10 +67,4 @@ func (p *Poll) isContains(choices []Choice) bool {
 		}
 	}
 	return true
-}
-
-func NewPoll() es.Aggregate {
-	return &Poll{
-		_userChoices: make(map[Voter][]Choice),
-	}
 }

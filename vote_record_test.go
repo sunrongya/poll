@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	//"fmt"
 	"github.com/stretchr/testify/assert"
 	es "github.com/sunrongya/eventsourcing"
 	"testing"
@@ -17,31 +17,14 @@ func TestVoteRecordRestore(t *testing.T) {
 		Time:         time.Now(),
 	}
 	voteRecord := &VoteRecord{}
-	voteRecord.ApplyEvents([]es.Event{
-		&VoteRecordCreatedEvent{VoteDetails: voteDetails},
-		&VoteRecordCompletedEvent{VoteDetails: voteDetails},
-	})
-	assert.Equal(t, 2, voteRecord.Version(), "version error")
+	voteRecord.HandleVoteRecordCreatedEvent(&VoteRecordCreatedEvent{VoteDetails: voteDetails})
+	voteRecord.HandleVoteRecordCompletedEvent(&VoteRecordCompletedEvent{VoteDetails: voteDetails})
+
 	assert.Equal(t, Completed, voteRecord._state, "state error")
 	assert.Equal(t, voteDetails, voteRecord._voteDetails, "vote details error")
 }
 
-func TestVoteRecordRestoreForErrorEvent(t *testing.T) {
-	assert.Panics(t, func() {
-		NewVoteRecord().ApplyEvents([]es.Event{&struct{ es.WithGuid }{}})
-	}, "restore error event must panic error")
-}
-
-func TestCheckVoteRecordApplyEvents(t *testing.T) {
-	events := []es.Event{
-		&VoteRecordCreatedEvent{},
-		&VoteRecordCompletedEvent{},
-		&VoteRecordFailedEvent{},
-	}
-	assert.NotPanics(t, func() { NewVoteRecord().ApplyEvents(events) }, "Check Process All Event")
-}
-
-func TestVoteRecordCommand(t *testing.T) {
+func TestCreateVoteRecordCommand(t *testing.T) {
 	voteDetails := VoteDetails{
 		VoteRecordId: es.NewGuid(),
 		PollId:       es.NewGuid(),
@@ -49,70 +32,68 @@ func TestVoteRecordCommand(t *testing.T) {
 		Choices:      []Choice{"PHP", "Java", "Golang"},
 		Time:         time.Now(),
 	}
+	command := &CreateVoteRecordCommand{VoteDetails: voteDetails}
+	events := []es.Event{&VoteRecordCreatedEvent{VoteDetails: voteDetails}}
 
-	tests := []struct {
-		voteRecord *VoteRecord
-		command    es.Command
-		event      es.Event
-	}{
-		{
-			&VoteRecord{},
-			&CreateVoteRecordCommand{WithGuid: es.WithGuid{Guid: voteDetails.VoteRecordId}, VoteDetails: voteDetails},
-			&VoteRecordCreatedEvent{WithGuid: es.WithGuid{Guid: voteDetails.VoteRecordId}, VoteDetails: voteDetails},
-		},
-		{
-			&VoteRecord{_state: Created},
-			&CompleteVoteRecordCommand{WithGuid: es.WithGuid{Guid: voteDetails.VoteRecordId}, VoteDetails: voteDetails},
-			&VoteRecordCompletedEvent{WithGuid: es.WithGuid{Guid: voteDetails.VoteRecordId}, VoteDetails: voteDetails},
-		},
-		{
-			&VoteRecord{_state: Created},
-			&FailVoteRecordCommand{WithGuid: es.WithGuid{Guid: voteDetails.VoteRecordId}, VoteDetails: voteDetails},
-			&VoteRecordFailedEvent{WithGuid: es.WithGuid{Guid: voteDetails.VoteRecordId}, VoteDetails: voteDetails},
-		},
+	assert.Equal(t, events, new(VoteRecord).ProcessCreateVoteRecordCommand(command), "创建投票记录命令返回事件有误")
+}
+
+func TestCompleteVoteRecordCommand(t *testing.T) {
+	voteDetails := VoteDetails{
+		VoteRecordId: es.NewGuid(),
+		PollId:       es.NewGuid(),
+		Voter:        "adj",
+		Choices:      []Choice{"PHP", "Java", "Golang"},
+		Time:         time.Now(),
 	}
+	voteRecord := &VoteRecord{_state: Created}
+	command := &CompleteVoteRecordCommand{VoteDetails: voteDetails}
+	events := []es.Event{&VoteRecordCompletedEvent{VoteDetails: voteDetails}}
 
-	for _, v := range tests {
-		assert.Equal(t, []es.Event{v.event}, v.voteRecord.ProcessCommand(v.command))
+	assert.Equal(t, events, voteRecord.ProcessCompleteVoteRecordCommand(command), "成功创建投票记录命令返回事件有误")
+}
+
+func TestFailVoteRecordCommand(t *testing.T) {
+	voteDetails := VoteDetails{
+		VoteRecordId: es.NewGuid(),
+		PollId:       es.NewGuid(),
+		Voter:        "adj",
+		Choices:      []Choice{"PHP", "Java", "Golang"},
+		Time:         time.Now(),
+	}
+	voteRecord := &VoteRecord{_state: Created}
+	command := &FailVoteRecordCommand{VoteDetails: voteDetails}
+	events := []es.Event{&VoteRecordFailedEvent{VoteDetails: voteDetails}}
+
+	assert.Equal(t, events, voteRecord.ProcessFailVoteRecordCommand(command), "失败创建投票记录命令返回事件有误")
+}
+
+func TestCompleteVoteRecordCommand_Panic(t *testing.T) {
+	voteRecords := []*VoteRecord{
+		&VoteRecord{},
+		&VoteRecord{_state: Completed},
+		&VoteRecord{_state: Failured},
+	}
+	for _, voteRecord := range voteRecords {
+		assert.Panics(t, func() {
+			voteRecord.ProcessCompleteVoteRecordCommand(&CompleteVoteRecordCommand{})
+		},
+			"执行CompleteVoteRecordCommand应该抛出异常",
+		)
 	}
 }
 
-func TestVoteRecordCommand_Panic(t *testing.T) {
-	tests := []struct {
-		voteRecord *VoteRecord
-		command    es.Command
-	}{
-		{
-			&VoteRecord{},
-			&struct{ es.WithGuid }{},
-		},
-		{
-			&VoteRecord{},
-			&CompleteVoteRecordCommand{},
-		},
-		{
-			&VoteRecord{_state: Completed},
-			&CompleteVoteRecordCommand{},
-		},
-		{
-			&VoteRecord{_state: Failured},
-			&CompleteVoteRecordCommand{},
-		},
-		{
-			&VoteRecord{},
-			&FailVoteRecordCommand{},
-		},
-		{
-			&VoteRecord{_state: Completed},
-			&FailVoteRecordCommand{},
-		},
-		{
-			&VoteRecord{_state: Failured},
-			&FailVoteRecordCommand{},
-		},
+func TestFailVoteRecordCommand_Panic(t *testing.T) {
+	voteRecords := []*VoteRecord{
+		&VoteRecord{},
+		&VoteRecord{_state: Completed},
+		&VoteRecord{_state: Failured},
 	}
-
-	for _, v := range tests {
-		assert.Panics(t, func() { v.voteRecord.ProcessCommand(v.command) }, fmt.Sprintf("test panics error: command:%v", v.command))
+	for _, voteRecord := range voteRecords {
+		assert.Panics(t, func() {
+			voteRecord.ProcessFailVoteRecordCommand(&FailVoteRecordCommand{})
+		},
+			"执行FailVoteRecordCommand应该抛出异常",
+		)
 	}
 }
