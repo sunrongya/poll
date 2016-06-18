@@ -32,7 +32,6 @@ func (p *Poll) ProcessVotePollBecauseOfVoteRecordCommand(command *VotePollBecaus
 		return []es.Event{
 			&VotePollFailedBecauseOfVoteRecordEvent{VoteDetails: command.VoteDetails},
 		}
-
 	}
 	return []es.Event{
 		&VotePollCompletedBecauseOfVoteRecordEvent{VoteDetails: command.VoteDetails},
