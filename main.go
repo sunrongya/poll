@@ -2,13 +2,25 @@ package main
 
 import (
 	"fmt"
-	ES "github.com/sunrongya/eventsourcing"
+	"os"
+	"path"
 	"sync"
 	"time"
+
+	ES "github.com/sunrongya/eventsourcing"
+	"github.com/sunrongya/eventsourcing/estore"
+	"github.com/xyproto/simplebolt"
 )
 
 func main() {
-	var store = ES.NewInMemStore()
+	db, _ := simplebolt.New(path.Join(os.TempDir(), "bolt.db"))
+	defer db.Close()
+	creator := simplebolt.NewCreator(db)
+	eventFactory := ES.NewEventFactory()
+	eventFactory.RegisterAggregate(NewPoll(), NewVoteRecord())
+	store := estore.NewXyprotoEStore(creator, estore.NewEncoder(eventFactory), estore.NewDecoder(eventFactory))
+
+	//var store = ES.NewInMemStore()
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
@@ -47,7 +59,7 @@ func main() {
 	//wait and print
 	go func() {
 		time.Sleep(200 * time.Millisecond)
-		printEvents(store.GetEvents(0, 100))
+		printEvents(store.GetEvents(ES.NewGuid(), 0, 100))
 		fmt.Printf("-----------------\nAggregates:\n\n")
 		fmt.Printf("%v\n------------------\n", ps.RestoreAggregate(poll1))
 		fmt.Printf("%v\n------------------\n", ps.RestoreAggregate(poll2))

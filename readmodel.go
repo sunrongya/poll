@@ -12,37 +12,37 @@ type RPoll struct {
 }
 
 type PollProjector struct {
-	repository es.ReadRepository
+	_repository es.ReadRepository
 }
 
 func NewPollProjector(repository es.ReadRepository) *PollProjector {
-	return &PollProjector{repository: repository}
+	return &PollProjector{_repository: repository}
 }
 
-func (g *PollProjector) HandlePollCreatedEvent(event *PollCreatedEvent) {
+func (this *PollProjector) HandlePollCreatedEvent(event *PollCreatedEvent) {
 	poll := &RPoll{
 		Id:         event.GetGuid(),
 		Title:      event.Title,
 		Choices:    event.Choices,
 		ChoiceStat: make(map[Choice]int),
 	}
-	g.repository.Save(poll.Id, poll)
+	this._repository.Save(poll.Id, poll)
 }
 
-func (g *PollProjector) HandleVotePollCompletedBecauseOfVoteRecordEvent(event *VotePollCompletedBecauseOfVoteRecordEvent) {
-	g.do(event.GetGuid(), func(poll *RPoll) {
+func (this *PollProjector) HandleVotePollCompletedBecauseOfVoteRecordEvent(event *VotePollCompletedBecauseOfVoteRecordEvent) {
+	this.do(event.GetGuid(), func(poll *RPoll) {
 		for _, choice := range event.Choices {
 			poll.ChoiceStat[choice] += 1
 		}
 	})
 }
 
-func (g *PollProjector) do(id es.Guid, assignRPollFn func(*RPoll)) {
-	i, err := g.repository.Find(id)
+func (this *PollProjector) do(id es.Guid, assignRPollFn func(*RPoll)) {
+	i, err := this._repository.Find(id)
 	if err != nil {
 		return
 	}
 	poll := i.(*RPoll)
 	assignRPollFn(poll)
-	g.repository.Save(id, poll)
+	this._repository.Save(id, poll)
 }

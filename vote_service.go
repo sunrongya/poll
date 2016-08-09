@@ -16,7 +16,7 @@ func NewVoteService(store es.EventStore) *VoteService {
 	return service
 }
 
-func (p *VoteService) VotePoll(pollId es.Guid, voter Voter, choices []Choice, created_time time.Time) es.Guid {
+func (this *VoteService) VotePoll(pollId es.Guid, voter Voter, choices []Choice, created_time time.Time) es.Guid {
 	guid := es.NewGuid()
 	c := &CreateVoteRecordCommand{
 		WithGuid: es.WithGuid{guid},
@@ -28,6 +28,6 @@ func (p *VoteService) VotePoll(pollId es.Guid, voter Voter, choices []Choice, cr
 			Time:         created_time,
 		},
 	}
-	p.PublishCommand(c)
+	this.PublishCommand(c)
 	return guid
 }

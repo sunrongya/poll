@@ -15,13 +15,13 @@ func NewPollService(store es.EventStore) *PollService {
 	return service
 }
 
-func (p *PollService) CreatePoll(title string, choices []Choice) es.Guid {
+func (this *PollService) CreatePoll(title string, choices []Choice) es.Guid {
 	guid := es.NewGuid()
 	c := &CreatePollCommand{
 		WithGuid: es.WithGuid{guid},
 		Title:    title,
 		Choices:  choices,
 	}
-	p.PublishCommand(c)
+	this.PublishCommand(c)
 	return guid
 }
